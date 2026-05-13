@@ -178,42 +178,99 @@
 
   let lastHex = null;
 
+  function getElementColor(el) {
+    // Try background color first
+    let rgb = parseBgColor(el);
+    if (rgb && isVividColor(rgb.r, rgb.g, rgb.b)) {
+      return rgb;
+    }
+
+    // Try border color
+    const borderColor = window.getComputedStyle(el).borderColor;
+    const bm = borderColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (bm) {
+      rgb = { r: +bm[1], g: +bm[2], b: +bm[3] };
+      if (isVividColor(rgb.r, rgb.g, rgb.b)) {
+        return rgb;
+      }
+    }
+
+    // Try outline color
+    const outlineColor = window.getComputedStyle(el).outlineColor;
+    const om = outlineColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (om) {
+      rgb = { r: +om[1], g: +om[2], b: +om[3] };
+      if (isVividColor(rgb.r, rgb.g, rgb.b)) {
+        return rgb;
+      }
+    }
+
+    return null;
+  }
+
   function scanForColor() {
-    // Walk all elements — find big-ish ones with a vivid bg color
-    const candidates = document.querySelectorAll('div, canvas');
-    let bestEl = null, bestArea = 0;
+    // Focus on elements in the viewport center (where game UI typically is)
+    const candidates = document.querySelectorAll('*');
+    let bestEl = null, bestScore = -1;
 
     for (const el of candidates) {
       const rect = el.getBoundingClientRect();
-      const area = rect.width * rect.height;
-      if (area < 10000) continue;   // smaller than ~100×100
+      
+      // Skip elements outside viewport or too far to edges
+      if (rect.top < -100 || rect.left < -100 || rect.top > window.innerHeight + 100 || rect.left > window.innerWidth + 100) {
+        continue;
+      }
 
-      const rgb = parseBgColor(el);
+      const width = rect.width;
+      const height = rect.height;
+      
+      // Prefer square/circular elements (aspect ratio close to 1:1)
+      const aspectRatio = Math.abs(width / height);
+      const isSquareish = (aspectRatio > 0.7 && aspectRatio < 1.3);
+      
+      // Size preference: medium-sized elements (like color swatches)
+      // Not too small, not too large
+      const area = width * height;
+      if (area < 1000 || area > 100000) continue;  // roughly 30×30 to 300×300
+      
+      const rgb = getElementColor(el);
       if (!rgb) continue;
-      if (!isVividColor(rgb.r, rgb.g, rgb.b)) continue;
 
-      if (area > bestArea) {
-        bestArea = area;
+      // Scoring: prefer square-ish, medium-sized, vivid colors
+      let score = area;
+      if (isSquareish) score *= 1.5;  // boost square elements
+      
+      // Prefer elements closer to center
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      const elCenterX = rect.left + width / 2;
+      const elCenterY = rect.top + height / 2;
+      const distFromCenter = Math.sqrt(Math.pow(elCenterX - centerX, 2) + Math.pow(elCenterY - centerY, 2));
+      const maxDist = Math.sqrt(Math.pow(centerX, 2) + Math.pow(centerY, 2));
+      score *= (1 - (distFromCenter / maxDist) * 0.3);  // up to 30% penalty for distance
+
+      if (score > bestScore) {
+        bestScore = score;
         bestEl = el;
       }
     }
 
     if (bestEl) {
-      const { r, g, b } = parseBgColor(bestEl);
-      const hex = toHex(r, g, b);
+      const rgb = getElementColor(bestEl);
+      const hex = toHex(rgb.r, rgb.g, rgb.b);
       if (hex !== lastHex) {
         lastHex = hex;
-        updateOverlay(r, g, b);
+        updateOverlay(rgb.r, rgb.g, rgb.b);
       }
     }
   }
 
-  // Poll — dialed.gg updates colors via JS, MutationObserver alone misses style changes
+  // Poll frequently — dialed.gg updates colors via JS, MutationObserver alone misses style changes
   let pollId = null;
 
   function startPolling() {
     if (pollId) return;
-    pollId = setInterval(scanForColor, 120);
+    pollId = setInterval(scanForColor, 50);  // scan every 50ms for responsive round detection
   }
 
   // Also observe DOM mutations to catch when the game initialises
