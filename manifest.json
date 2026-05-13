@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Dialed.gg Color Helper",
+  "version": "1.0",
+  "description": "Shows you the exact HSB values of the color on dialed.gg so you can learn to recreate it",
+  "permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["*://dialed.gg/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
+  }
+}
